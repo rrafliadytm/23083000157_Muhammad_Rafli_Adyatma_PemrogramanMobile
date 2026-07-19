@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="primary">#1565C0</color>
+    <color name="top_bar_background">#1565C0</color>
+    <color name="primary_dark">#0D47A1</color>
+    <color name="drawer_header_bg">#0D47A1</color>
+    <color name="background_main">#F5F5F5</color>
+    <color name="background_drawer">#FFFFFF</color>
+    <color name="top_bar_content">#FFFFFF</color>
+    <color name="drawer_header_text">#FFFFFF</color>
+    <color name="drawer_item_selected">#E3F2FD</color>
+    <color name="drawer_item_selected_text">#1565C0</color>
+    <color name="content_text">#333333</color>
+
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+</resources>

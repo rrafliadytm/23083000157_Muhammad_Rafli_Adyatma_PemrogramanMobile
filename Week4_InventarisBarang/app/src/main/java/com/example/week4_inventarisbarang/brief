@@ -1,0 +1,1723 @@
+Source Code Aplikasi Inventaris Barang
+Jetpack Compose + Navigation + SharedPreferences
+Disiapkan oleh Kukuh Yudhistiro, S.Kom., M.Kom. — 2026
+________________________________________
+Struktur Project
+com.example.inventarisbarang/
+├── MainActivity.kt
+├── navigation/
+│   └── AppNavigation.kt
+├── model/
+│   └── Barang.kt
+├── data/
+│   └── BarangRepository.kt
+├── screen/
+│   ├── DaftarBarangScreen.kt
+│   ├── DetailBarangScreen.kt
+│   └── TambahBarangScreen.kt
+└── ui/theme/
+    └── (default Material3 theme)
+________________________________________
+1. build.gradle.kts (Module: app) — Dependencies
+plugins {
+    id("com.android.application")
+    id("org.jetbrains.kotlin.android")
+    // Plugin Compose Compiler (Kotlin 2.0+)
+    id("org.jetbrains.kotlin.plugin.compose")
+}
+
+android {
+    namespace = "com.example.inventarisbarang"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "com.example.inventarisbarang"
+        minSdk = 26
+        targetSdk = 35
+        versionCode = 1
+        versionName = "1.0"
+    }
+
+    buildFeatures {
+        compose = true
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    // Compose BOM — satu versi mengatur semua library Compose
+    val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
+    implementation(composeBom)
+
+    // Compose UI dasar
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+
+    // Activity Compose — penghubung Activity dengan Compose
+    implementation("androidx.activity:activity-compose:1.9.3")
+
+    // Navigation Compose — perpindahan antar screen
+    implementation("androidx.navigation:navigation-compose:2.8.5")
+
+    // Coil — library untuk load gambar dari URI/file
+    implementation("io.coil-kt:coil-compose:2.7.0")
+
+    // Gson — konversi objek Kotlin ke JSON dan sebaliknya
+    implementation("com.google.code.gson:gson:2.11.0")
+
+    // Debug tools
+    debugImplementation("androidx.compose.ui:ui-tooling")
+}
+________________________________________
+2. AndroidManifest.xml — Izin Akses
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Izin membaca penyimpanan untuk Android 12 ke bawah -->
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+
+    <!-- Izin membaca gambar untuk Android 13+ -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Inventaris Barang"
+        android:theme="@style/Theme.InventarisBarang">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
+________________________________________
+3. Model — Barang.kt
+package com.example.inventarisbarang.model
+
+/**
+ * Data class Barang merepresentasikan satu item barang.
+ *
+ * Analogi: Seperti satu kartu katalog di perpustakaan —
+ * setiap kartu menyimpan informasi lengkap tentang satu buku.
+ * Di sini, setiap Barang menyimpan info lengkap satu item inventaris.
+ *
+ * @param id       ID unik barang (auto-generate pakai System.currentTimeMillis)
+ * @param nama     Nama barang, contoh: "Tas Ransel Premium"
+ * @param kategori Kategori barang, contoh: "Aksesoris"
+ * @param harga    Harga dalam Rupiah, contoh: 245000.0
+ * @param stok     Jumlah stok tersedia, contoh: 24
+ * @param sku      Stock Keeping Unit — kode unik produk, contoh: "AKS-2024-001"
+ * @param berat    Berat dalam kilogram, contoh: 0.8
+ * @param deskripsi Penjelasan detail tentang barang
+ * @param gambarUri URI gambar dari galeri (disimpan sebagai String di SharedPreferences)
+ */
+data class Barang(
+    val id: Long = System.currentTimeMillis(),
+    val nama: String = "",
+    val kategori: String = "",
+    val harga: Double = 0.0,
+    val stok: Int = 0,
+    val sku: String = "",
+    val berat: Double = 0.0,
+    val deskripsi: String = "",
+    val gambarUri: String = ""    // URI gambar dari galeri, disimpan sebagai String
+)
+________________________________________
+4. Repository — BarangRepository.kt
+package com.example.inventarisbarang.data
+
+import android.content.Context
+import android.content.SharedPreferences
+import com.example.inventarisbarang.model.Barang
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+
+/**
+ * BarangRepository mengelola penyimpanan data barang menggunakan SharedPreferences.
+ *
+ * Analogi: SharedPreferences itu seperti buku catatan kecil yang selalu
+ * dibawa di saku — ringan, cepat diakses, dan datanya tetap ada
+ * meskipun aplikasi ditutup. Cocok untuk data kecil-menengah.
+ *
+ * Cara kerja:
+ * 1. Semua data Barang dikonversi ke format JSON menggunakan Gson
+ * 2. JSON string disimpan di SharedPreferences dengan key "daftar_barang"
+ * 3. Saat membaca, JSON string dikonversi kembali ke List<Barang>
+ *
+ * Catatan: Untuk data besar atau relasional, gunakan Room Database.
+ * SharedPreferences cocok untuk penyimpanan sederhana seperti ini.
+ */
+class BarangRepository(context: Context) {
+
+    // Inisialisasi SharedPreferences dengan nama file "inventaris_prefs"
+    // MODE_PRIVATE = hanya aplikasi ini yang bisa mengakses file ini
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences("inventaris_prefs", Context.MODE_PRIVATE)
+
+    // Gson digunakan untuk konversi objek <-> JSON
+    private val gson = Gson()
+
+    // Key untuk menyimpan daftar barang di SharedPreferences
+    private val KEY_DAFTAR = "daftar_barang"
+
+    /**
+     * Mengambil semua data barang dari SharedPreferences.
+     *
+     * Proses:
+     * 1. Baca string JSON dari SharedPreferences
+     * 2. Jika null (belum ada data), kembalikan list kosong
+     * 3. Jika ada, konversi JSON string ke List<Barang> menggunakan Gson
+     *
+     * TypeToken diperlukan karena Gson perlu tahu tipe generic (List<Barang>)
+     * saat melakukan deserialisasi dari JSON.
+     */
+    fun getSemuaBarang(): List<Barang> {
+        val json = prefs.getString(KEY_DAFTAR, null)
+        // Jika belum ada data tersimpan, kembalikan list kosong
+        if (json == null) return emptyList()
+
+        // TypeToken memberitahu Gson bahwa kita ingin List<Barang>
+        val type = object : TypeToken<List<Barang>>() {}.type
+        return gson.fromJson(json, type)
+    }
+
+    /**
+     * Menyimpan seluruh daftar barang ke SharedPreferences.
+     *
+     * Proses:
+     * 1. Konversi List<Barang> ke JSON string menggunakan Gson
+     * 2. Simpan JSON string ke SharedPreferences
+     *
+     * apply() digunakan agar penyimpanan dilakukan secara asinkron
+     * (tidak memblokir UI thread). Alternatifnya commit() yang sinkron.
+     */
+    private fun simpanSemuaBarang(daftar: List<Barang>) {
+        val json = gson.toJson(daftar)
+        prefs.edit().putString(KEY_DAFTAR, json).apply()
+    }
+
+    /**
+     * Menambahkan satu barang baru ke daftar.
+     *
+     * Proses:
+     * 1. Ambil daftar yang sudah ada
+     * 2. Tambahkan barang baru ke daftar (menggunakan operator +)
+     * 3. Simpan kembali seluruh daftar
+     */
+    fun tambahBarang(barang: Barang) {
+        val daftar = getSemuaBarang().toMutableList()
+        daftar.add(barang)
+        simpanSemuaBarang(daftar)
+    }
+
+    /**
+     * Mengambil satu barang berdasarkan ID.
+     *
+     * find {} akan mencari item pertama yang cocok dengan kondisi.
+     * Jika tidak ditemukan, mengembalikan null.
+     */
+    fun getBarangById(id: Long): Barang? {
+        return getSemuaBarang().find { it.id == id }
+    }
+
+    /**
+     * Menghapus satu barang berdasarkan ID.
+     *
+     * filter {} membuat list baru yang hanya berisi item
+     * yang ID-nya TIDAK sama dengan id yang ingin dihapus.
+     */
+    fun hapusBarang(id: Long) {
+        val daftar = getSemuaBarang().filter { it.id != id }
+        simpanSemuaBarang(daftar)
+    }
+
+    /**
+     * Mengupdate data barang yang sudah ada.
+     *
+     * map {} memeriksa setiap item:
+     * - Jika ID cocok → ganti dengan data baru (barang)
+     * - Jika ID tidak cocok → biarkan apa adanya (it)
+     */
+    fun updateBarang(barang: Barang) {
+        val daftar = getSemuaBarang().map {
+            if (it.id == barang.id) barang else it
+        }
+        simpanSemuaBarang(daftar)
+    }
+}
+________________________________________
+5. Navigation — AppNavigation.kt
+package com.example.inventarisbarang.navigation
+
+import androidx.compose.runtime.Composable
+import androidx.navigation.NavHostController
+import androidx.navigation.NavType
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.navArgument
+import com.example.inventarisbarang.screen.DaftarBarangScreen
+import com.example.inventarisbarang.screen.DetailBarangScreen
+import com.example.inventarisbarang.screen.TambahBarangScreen
+
+/**
+ * AppNavigation mengatur alur perpindahan antar screen di aplikasi.
+ *
+ * Analogi: NavHost itu seperti "peta jalan" aplikasi.
+ * Setiap composable() adalah satu "halte" (screen) yang bisa dikunjungi.
+ * NavController adalah "sopir" yang membawa user dari satu halte ke halte lain.
+ *
+ * Alur navigasi:
+ *   [Daftar Barang] ──klik item──► [Detail Barang]
+ *         │                              │
+ *    klik FAB (+)                   klik Edit──► [Tambah/Edit Barang]
+ *         │
+ *         ▼
+ *   [Tambah Barang]
+ *
+ * Route (rute) adalah "alamat" setiap screen:
+ * - "daftar"          → Screen Daftar Barang
+ * - "detail/{id}"     → Screen Detail (id = ID barang yang diklik)
+ * - "tambah"          → Screen Tambah Barang Baru
+ * - "edit/{id}"       → Screen Edit Barang (id = ID barang yang diedit)
+ */
+@Composable
+fun AppNavigation(navController: NavHostController) {
+    NavHost(
+        navController = navController,
+        startDestination = "daftar"    // Screen pertama yang muncul saat app dibuka
+    ) {
+        // Screen 1: Daftar Barang (halaman utama)
+        composable("daftar") {
+            DaftarBarangScreen(navController = navController)
+        }
+
+        // Screen 2: Detail Barang
+        // {id} adalah parameter dinamis — nilainya berubah sesuai barang yang diklik
+        // Contoh: navigate("detail/1717123456789") → id = 1717123456789
+        composable(
+            route = "detail/{id}",
+            arguments = listOf(
+                navArgument("id") { type = NavType.LongType }
+            )
+        ) { backStackEntry ->
+            // Ambil nilai id dari URL route
+            val id = backStackEntry.arguments?.getLong("id") ?: 0L
+            DetailBarangScreen(navController = navController, barangId = id)
+        }
+
+        // Screen 3a: Tambah Barang Baru
+        composable("tambah") {
+            TambahBarangScreen(navController = navController)
+        }
+
+        // Screen 3b: Edit Barang yang sudah ada
+        // Menggunakan screen yang sama (TambahBarangScreen) tapi dengan mode edit
+        composable(
+            route = "edit/{id}",
+            arguments = listOf(
+                navArgument("id") { type = NavType.LongType }
+            )
+        ) { backStackEntry ->
+            val id = backStackEntry.arguments?.getLong("id") ?: 0L
+            TambahBarangScreen(navController = navController, editBarangId = id)
+        }
+    }
+}
+________________________________________
+6. MainActivity.kt
+package com.example.inventarisbarang
+
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.ui.Modifier
+import androidx.navigation.compose.rememberNavController
+import com.example.inventarisbarang.navigation.AppNavigation
+
+/**
+ * MainActivity adalah titik masuk (entry point) aplikasi Android.
+ *
+ * Analogi: MainActivity itu seperti "pintu depan" rumah —
+ * semua tamu (user) masuk melalui pintu ini.
+ * Di dalam, kita menyiapkan "ruangan" (NavController + NavHost)
+ * agar tamu bisa berpindah dari satu ruangan ke ruangan lain.
+ *
+ * Alur:
+ * 1. onCreate() dipanggil saat app pertama kali dibuka
+ * 2. enableEdgeToEdge() membuat tampilan full-screen (tanpa status bar hitam)
+ * 3. setContent {} menentukan tampilan Compose yang akan ditampilkan
+ * 4. rememberNavController() membuat "sopir" navigasi
+ * 5. AppNavigation() menampilkan screen sesuai rute aktif
+ */
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // Tampilan edge-to-edge (konten mengisi seluruh layar)
+        enableEdgeToEdge()
+
+        // setContent = menentukan UI yang ditampilkan menggunakan Jetpack Compose
+        setContent {
+            MaterialTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    // Buat NavController yang akan "mengingat" posisi navigasi
+                    val navController = rememberNavController()
+
+                    // Jalankan sistem navigasi dengan NavController ini
+                    AppNavigation(navController = navController)
+                }
+            }
+        }
+    }
+}
+________________________________________
+7. Screen 1 — DaftarBarangScreen.kt
+package com.example.inventarisbarang.screen
+
+import android.net.Uri
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.inventarisbarang.data.BarangRepository
+import com.example.inventarisbarang.model.Barang
+import java.text.NumberFormat
+import java.util.Locale
+
+/**
+ * DaftarBarangScreen menampilkan daftar semua barang dalam bentuk card.
+ *
+ * Analogi: Seperti etalase toko — semua barang ditampilkan dalam
+ * kotak-kotak (card) yang bisa di-scroll. Setiap card menampilkan
+ * foto, nama, kategori, harga, dan stok barang.
+ *
+ * Fitur:
+ * - LazyColumn untuk menampilkan daftar barang (efisien memori)
+ * - FAB (Floating Action Button) untuk menambah barang baru
+ * - Klik card untuk melihat detail barang
+ * - Search bar di TopAppBar
+ * - Snackbar untuk notifikasi
+ *
+ * Komponen utama:
+ * - Scaffold: kerangka layout (TopBar + Content + FAB + Snackbar)
+ * - LazyColumn: daftar yang hanya me-render item yang terlihat di layar
+ * - Card: wadah visual untuk setiap item barang
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DaftarBarangScreen(navController: NavHostController) {
+    // Context Android dibutuhkan untuk mengakses SharedPreferences
+    val context = LocalContext.current
+
+    // Inisialisasi repository untuk mengakses data
+    val repository = remember { BarangRepository(context) }
+
+    // State: daftar barang yang ditampilkan
+    // mutableStateOf agar Compose me-recompose saat data berubah
+    var daftarBarang by remember { mutableStateOf(repository.getSemuaBarang()) }
+
+    // State: teks pencarian
+    var searchQuery by remember { mutableStateOf("") }
+
+    // State: apakah search bar sedang aktif/terbuka
+    var isSearchActive by remember { mutableStateOf(false) }
+
+    // SnackbarHostState untuk menampilkan pesan Snackbar
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Filter daftar barang berdasarkan query pencarian
+    // Jika searchQuery kosong, tampilkan semua barang
+    val filteredBarang = if (searchQuery.isEmpty()) {
+        daftarBarang
+    } else {
+        daftarBarang.filter {
+            it.nama.contains(searchQuery, ignoreCase = true) ||
+            it.kategori.contains(searchQuery, ignoreCase = true)
+        }
+    }
+
+    // Refresh data setiap kali screen ini muncul (kembali dari screen lain)
+    // LaunchedEffect(Unit) hanya jalan sekali, tapi kita pakai currentBackStackEntry
+    // agar refresh saat kembali dari screen lain
+    LaunchedEffect(navController.currentBackStackEntry) {
+        daftarBarang = repository.getSemuaBarang()
+    }
+
+    Scaffold(
+        // === TOP APP BAR ===
+        topBar = {
+            TopAppBar(
+                title = {
+                    if (isSearchActive) {
+                        // Mode pencarian: tampilkan TextField
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("Cari barang...") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline
+                            )
+                        )
+                    } else {
+                        // Mode normal: tampilkan judul
+                        Text("Inventaris Barang")
+                    }
+                },
+                actions = {
+                    // Tombol search di kanan atas
+                    IconButton(onClick = {
+                        isSearchActive = !isSearchActive
+                        if (!isSearchActive) searchQuery = "" // Reset saat tutup
+                    }) {
+                        Icon(Icons.Default.Search, contentDescription = "Cari")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            )
+        },
+
+        // === FLOATING ACTION BUTTON ===
+        // Tombol bulat di kanan bawah untuk menambah barang baru
+        floatingActionButton = {
+            FloatingActionButton(
+                onClick = {
+                    // Navigasi ke screen Tambah Barang
+                    navController.navigate("tambah")
+                },
+                containerColor = MaterialTheme.colorScheme.primary
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Tambah Barang",
+                    tint = MaterialTheme.colorScheme.onPrimary
+                )
+            }
+        },
+
+        // === SNACKBAR HOST ===
+        // Tempat Snackbar muncul di bagian bawah layar
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+
+    ) { paddingValues ->
+        // paddingValues = padding dari Scaffold (menghindari overlap dengan TopBar)
+
+        if (filteredBarang.isEmpty()) {
+            // === STATE KOSONG ===
+            // Tampilkan pesan jika belum ada barang
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "📦",
+                        fontSize = 48.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        text = if (searchQuery.isEmpty()) "Belum ada barang"
+                               else "Barang tidak ditemukan",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (searchQuery.isEmpty()) {
+                        Text(
+                            text = "Tap tombol + untuk menambah barang baru",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        } else {
+            // === DAFTAR BARANG ===
+            // LazyColumn = RecyclerView versi Compose
+            // Hanya me-render item yang terlihat di layar (hemat memori)
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // items() = loop untuk setiap barang dalam daftar
+                // key = identifier unik agar Compose tahu item mana yang berubah
+                items(
+                    items = filteredBarang,
+                    key = { it.id }
+                ) { barang ->
+                    BarangCard(
+                        barang = barang,
+                        onClick = {
+                            // Navigasi ke Detail Barang dengan mengirim ID
+                            navController.navigate("detail/${barang.id}")
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * BarangCard adalah komponen card untuk satu item barang.
+ *
+ * Analogi: Seperti satu "kartu produk" di marketplace —
+ * menampilkan thumbnail, nama, kategori, harga, dan stok.
+ *
+ * @param barang Data barang yang ditampilkan
+ * @param onClick Aksi saat card diklik (navigasi ke detail)
+ */
+@Composable
+fun BarangCard(barang: Barang, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),   // Seluruh card bisa diklik
+        shape = RoundedCornerShape(12.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // === GAMBAR BARANG ===
+            if (barang.gambarUri.isNotEmpty()) {
+                // Jika ada gambar: tampilkan dari URI menggunakan Coil
+                // Coil = library untuk load gambar secara asinkron
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(Uri.parse(barang.gambarUri))
+                        .crossfade(true)    // Efek transisi halus
+                        .build(),
+                    contentDescription = barang.nama,
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    contentScale = ContentScale.Crop   // Gambar di-crop agar pas
+                )
+            } else {
+                // Jika tidak ada gambar: tampilkan placeholder berwarna
+                // dengan inisial nama barang
+                Surface(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .clip(RoundedCornerShape(8.dp)),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            // Ambil huruf pertama dari nama barang, kapital
+                            text = barang.nama.take(1).uppercase(),
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // === INFO BARANG ===
+            Column(modifier = Modifier.weight(1f)) {
+                // Nama barang
+                Text(
+                    text = barang.nama,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis  // "..." jika terlalu panjang
+                )
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Kategori barang
+                Text(
+                    text = barang.kategori,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Harga dan stok dalam satu baris
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Harga diformat ke Rupiah: 245000.0 → "Rp245.000"
+                    Text(
+                        text = formatRupiah(barang.harga),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+
+                    // Badge stok dengan warna berbeda jika stok rendah
+                    Surface(
+                        shape = RoundedCornerShape(4.dp),
+                        color = if (barang.stok <= 5)
+                            MaterialTheme.colorScheme.errorContainer
+                        else
+                            MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Text(
+                            text = "Stok: ${barang.stok}",
+                            fontSize = 11.sp,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            color = if (barang.stok <= 5)
+                                MaterialTheme.colorScheme.onErrorContainer
+                            else
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            }
+
+            // Panah kanan sebagai indikator "bisa diklik"
+            Text(
+                text = "›",
+                fontSize = 24.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+/**
+ * Fungsi helper untuk memformat angka ke format Rupiah Indonesia.
+ * Contoh: 245000.0 → "Rp245.000"
+ *
+ * NumberFormat.getCurrencyInstance(Locale("id", "ID")) menggunakan
+ * aturan format mata uang Indonesia (titik sebagai pemisah ribuan).
+ */
+fun formatRupiah(amount: Double): String {
+    val format = NumberFormat.getCurrencyInstance(Locale("id", "ID"))
+    format.maximumFractionDigits = 0  // Tanpa desimal
+    return format.format(amount)
+}
+
+// === PREVIEW ===
+// Preview untuk melihat tampilan di Android Studio tanpa menjalankan app
+@Preview(showBackground = true, name = "Daftar Barang - Light")
+@Composable
+fun PreviewDaftarBarangScreen() {
+    MaterialTheme {
+        DaftarBarangScreen(navController = rememberNavController())
+    }
+}
+________________________________________
+8. Screen 2 — DetailBarangScreen.kt
+package com.example.inventarisbarang.screen
+
+import android.net.Uri
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.inventarisbarang.data.BarangRepository
+import com.example.inventarisbarang.model.Barang
+import kotlinx.coroutines.launch
+
+/**
+ * DetailBarangScreen menampilkan informasi lengkap satu barang.
+ *
+ * Analogi: Seperti halaman produk di marketplace —
+ * menampilkan foto besar, nama, kategori, harga, stok,
+ * SKU, berat, status, dan deskripsi lengkap.
+ *
+ * Fitur:
+ * - Gambar besar di atas
+ * - Informasi detail dalam baris-baris rapi
+ * - Tombol Edit → navigasi ke TambahBarangScreen mode edit
+ * - Tombol Hapus → dialog konfirmasi → hapus → kembali ke daftar
+ * - Snackbar untuk notifikasi
+ *
+ * @param navController Controller navigasi untuk berpindah screen
+ * @param barangId ID barang yang ingin ditampilkan detailnya
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DetailBarangScreen(
+    navController: NavHostController,
+    barangId: Long
+) {
+    val context = LocalContext.current
+    val repository = remember { BarangRepository(context) }
+
+    // Ambil data barang berdasarkan ID
+    var barang by remember { mutableStateOf(repository.getBarangById(barangId)) }
+
+    // State untuk dialog konfirmasi hapus
+    var showDeleteDialog by remember { mutableStateOf(false) }
+
+    // SnackbarHostState dan CoroutineScope untuk Snackbar
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+
+    // Refresh data saat kembali dari screen edit
+    LaunchedEffect(navController.currentBackStackEntry) {
+        barang = repository.getBarangById(barangId)
+    }
+
+    // Jika barang tidak ditemukan (misalnya sudah dihapus)
+    if (barang == null) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("Barang tidak ditemukan")
+        }
+        return
+    }
+
+    // Variabel non-null untuk kemudahan akses
+    val item = barang!!
+
+    Scaffold(
+        // === TOP APP BAR ===
+        topBar = {
+            TopAppBar(
+                title = { Text("Detail Barang") },
+                navigationIcon = {
+                    // Tombol kembali (←)
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Kembali"
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { paddingValues ->
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(rememberScrollState())  // Bisa di-scroll
+        ) {
+            // === GAMBAR BESAR ===
+            if (item.gambarUri.isNotEmpty()) {
+                AsyncImage(
+                    model = ImageRequest.Builder(LocalContext.current)
+                        .data(Uri.parse(item.gambarUri))
+                        .crossfade(true)
+                        .build(),
+                    contentDescription = item.nama,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .padding(16.dp)
+                        .clip(RoundedCornerShape(16.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                // Placeholder jika tidak ada gambar
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(220.dp)
+                        .padding(16.dp)
+                        .clip(RoundedCornerShape(16.dp)),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = item.nama.take(1).uppercase(),
+                            fontSize = 48.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            }
+
+            // === NAMA & KATEGORI ===
+            Column(modifier = Modifier.padding(horizontal = 16.dp)) {
+                Text(
+                    text = item.nama,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Kategori: ${item.kategori}",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // === BARIS-BARIS INFORMASI ===
+            // Setiap DetailRow menampilkan label di kiri dan nilai di kanan
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    DetailRow(label = "Harga", value = formatRupiah(item.harga))
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    DetailRow(label = "Stok Tersedia", value = "${item.stok} unit")
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    DetailRow(
+                        label = "SKU",
+                        value = item.sku.ifEmpty { "-" }
+                    )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    DetailRow(
+                        label = "Berat",
+                        value = if (item.berat > 0) "${item.berat} kg" else "-"
+                    )
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    // Status berdasarkan jumlah stok
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Status",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (item.stok > 0)
+                                MaterialTheme.colorScheme.secondaryContainer
+                            else
+                                MaterialTheme.colorScheme.errorContainer
+                        ) {
+                            Text(
+                                text = if (item.stok > 0) "Tersedia" else "Habis",
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(
+                                    horizontal = 8.dp,
+                                    vertical = 4.dp
+                                ),
+                                color = if (item.stok > 0)
+                                    MaterialTheme.colorScheme.onSecondaryContainer
+                                else
+                                    MaterialTheme.colorScheme.onErrorContainer
+                            )
+                        }
+                    }
+                }
+            }
+
+            // === DESKRIPSI ===
+            if (item.deskripsi.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(16.dp))
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "Deskripsi",
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = item.deskripsi,
+                            fontSize = 14.sp,
+                            lineHeight = 22.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // === TOMBOL EDIT & HAPUS ===
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 24.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Tombol Edit — navigasi ke TambahBarangScreen mode edit
+                OutlinedButton(
+                    onClick = {
+                        navController.navigate("edit/${item.id}")
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Edit")
+                }
+
+                // Tombol Hapus — tampilkan dialog konfirmasi
+                Button(
+                    onClick = { showDeleteDialog = true },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error
+                    )
+                ) {
+                    Icon(
+                        Icons.Default.Delete,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Hapus")
+                }
+            }
+        }
+
+        // === DIALOG KONFIRMASI HAPUS ===
+        // Muncul saat tombol Hapus diklik
+        if (showDeleteDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteDialog = false },
+                title = { Text("Hapus Barang") },
+                text = {
+                    Text("Apakah Anda yakin ingin menghapus \"${item.nama}\"? " +
+                         "Tindakan ini tidak dapat dibatalkan.")
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            // Hapus barang dari repository
+                            repository.hapusBarang(item.id)
+                            showDeleteDialog = false
+
+                            // Tampilkan Snackbar lalu kembali ke daftar
+                            scope.launch {
+                                snackbarHostState.showSnackbar(
+                                    message = "${item.nama} berhasil dihapus",
+                                    duration = SnackbarDuration.Short
+                                )
+                            }
+                            // Kembali ke screen daftar
+                            navController.popBackStack()
+                        },
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        )
+                    ) {
+                        Text("Hapus")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteDialog = false }) {
+                        Text("Batal")
+                    }
+                }
+            )
+        }
+    }
+}
+
+/**
+ * DetailRow menampilkan satu baris informasi dengan label dan nilai.
+ *
+ * @param label  Teks label di sebelah kiri (contoh: "Harga")
+ * @param value  Teks nilai di sebelah kanan (contoh: "Rp245.000")
+ */
+@Composable
+fun DetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = value,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+// === PREVIEW ===
+@Preview(showBackground = true, name = "Detail Barang - Light")
+@Composable
+fun PreviewDetailBarangScreen() {
+    MaterialTheme {
+        DetailBarangScreen(
+            navController = rememberNavController(),
+            barangId = 0L
+        )
+    }
+}
+________________________________________
+9. Screen 3 — TambahBarangScreen.kt
+package com.example.inventarisbarang.screen
+
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
+import com.example.inventarisbarang.data.BarangRepository
+import com.example.inventarisbarang.model.Barang
+import kotlinx.coroutines.launch
+
+/**
+ * TambahBarangScreen digunakan untuk menambah barang baru ATAU mengedit barang yang sudah ada.
+ *
+ * Analogi: Seperti formulir pendaftaran produk baru —
+ * user mengisi nama, kategori, harga, stok, dll.
+ * Jika editBarangId != null, formulir ini terisi data barang yang sudah ada (mode edit).
+ *
+ * Fitur Upload Gambar:
+ * - Menggunakan ActivityResultContracts.GetContent() untuk membuka galeri
+ * - URI gambar yang dipilih disimpan sebagai String di SharedPreferences
+ * - FLAG_GRANT_READ_URI_PERMISSION memastikan app tetap bisa akses gambar
+ *   setelah restart
+ *
+ * @param navController Controller navigasi
+ * @param editBarangId  Jika null → mode tambah baru.
+ *                      Jika ada nilai → mode edit (ID barang yang diedit)
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TambahBarangScreen(
+    navController: NavHostController,
+    editBarangId: Long? = null
+) {
+    val context = LocalContext.current
+    val repository = remember { BarangRepository(context) }
+    val scope = rememberCoroutineScope()
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Tentukan apakah mode edit atau tambah baru
+    val isEditMode = editBarangId != null
+
+    // Jika mode edit, ambil data barang yang sudah ada
+    val existingBarang = if (isEditMode) {
+        remember { repository.getBarangById(editBarangId!!) }
+    } else null
+
+    // === STATE FORM ===
+    // Setiap field form memiliki state sendiri
+    // Jika mode edit, isi dengan data yang sudah ada
+    var nama by remember { mutableStateOf(existingBarang?.nama ?: "") }
+    var kategori by remember { mutableStateOf(existingBarang?.kategori ?: "") }
+    var harga by remember { mutableStateOf(
+        if (existingBarang != null && existingBarang.harga > 0)
+            existingBarang.harga.toLong().toString()
+        else ""
+    ) }
+    var stok by remember { mutableStateOf(
+        if (existingBarang != null && existingBarang.stok > 0)
+            existingBarang.stok.toString()
+        else ""
+    ) }
+    var sku by remember { mutableStateOf(existingBarang?.sku ?: "") }
+    var berat by remember { mutableStateOf(
+        if (existingBarang != null && existingBarang.berat > 0)
+            existingBarang.berat.toString()
+        else ""
+    ) }
+    var deskripsi by remember { mutableStateOf(existingBarang?.deskripsi ?: "") }
+    var gambarUri by remember { mutableStateOf(existingBarang?.gambarUri ?: "") }
+
+    // State untuk dropdown kategori
+    var expandedKategori by remember { mutableStateOf(false) }
+
+    // Daftar kategori yang tersedia
+    val daftarKategori = listOf(
+        "Elektronik", "Fashion", "Aksesoris",
+        "Alat Tulis", "Makanan", "Minuman",
+        "Peralatan Rumah", "Olahraga", "Lainnya"
+    )
+
+    // === IMAGE PICKER ===
+    /**
+     * rememberLauncherForActivityResult membuat launcher untuk memilih gambar dari galeri.
+     *
+     * Cara kerja:
+     * 1. Saat tombol "Pilih Gambar" diklik, launcher.launch("image/*") dipanggil
+     * 2. Android membuka galeri/file picker
+     * 3. User memilih gambar
+     * 4. URI gambar yang dipilih dikembalikan ke callback
+     *
+     * takePersistableUriPermission() memastikan app tetap punya izin
+     * membaca gambar tersebut bahkan setelah app di-restart.
+     * Tanpa ini, URI bisa expired dan gambar tidak bisa ditampilkan lagi.
+     */
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            // Minta izin persisten untuk membaca URI ini
+            // Ini penting agar gambar tetap bisa diakses setelah app restart
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    it,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: SecurityException) {
+                // Beberapa provider tidak mendukung persistable permission
+                // Gambar tetap bisa ditampilkan selama sesi ini
+            }
+            // Simpan URI sebagai String
+            gambarUri = it.toString()
+        }
+    }
+
+    /**
+     * Fungsi untuk menyimpan data barang (tambah baru atau update).
+     *
+     * Validasi sederhana:
+     * - Nama dan kategori wajib diisi
+     * - Jika tidak valid, tampilkan Snackbar error
+     * - Jika valid, simpan ke SharedPreferences via repository
+     */
+    fun simpanBarang() {
+        // Validasi input wajib
+        if (nama.isBlank() || kategori.isBlank()) {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    message = "Nama dan Kategori wajib diisi!",
+                    duration = SnackbarDuration.Short
+                )
+            }
+            return
+        }
+
+        // Buat objek Barang dari data form
+        val barangBaru = Barang(
+            id = existingBarang?.id ?: System.currentTimeMillis(),
+            nama = nama.trim(),
+            kategori = kategori,
+            harga = harga.toDoubleOrNull() ?: 0.0,
+            stok = stok.toIntOrNull() ?: 0,
+            sku = sku.trim(),
+            berat = berat.toDoubleOrNull() ?: 0.0,
+            deskripsi = deskripsi.trim(),
+            gambarUri = gambarUri
+        )
+
+        // Simpan ke SharedPreferences
+        if (isEditMode) {
+            repository.updateBarang(barangBaru)
+        } else {
+            repository.tambahBarang(barangBaru)
+        }
+
+        // Tampilkan Snackbar sukses
+        scope.launch {
+            snackbarHostState.showSnackbar(
+                message = if (isEditMode) "Barang berhasil diperbarui"
+                          else "Barang berhasil ditambahkan",
+                duration = SnackbarDuration.Short
+            )
+        }
+
+        // Kembali ke screen sebelumnya
+        navController.popBackStack()
+    }
+
+    Scaffold(
+        // === TOP APP BAR ===
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(if (isEditMode) "Edit Barang" else "Tambah Barang")
+                },
+                navigationIcon = {
+                    IconButton(onClick = { navController.popBackStack() }) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Kembali"
+                        )
+                    }
+                },
+                actions = {
+                    // Tombol centang (✓) untuk menyimpan — alternatif tombol Simpan
+                    IconButton(onClick = { simpanBarang() }) {
+                        Icon(
+                            Icons.Default.Check,
+                            contentDescription = "Simpan"
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            )
+        },
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { paddingValues ->
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+        ) {
+            // === UPLOAD GAMBAR ===
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(if (gambarUri.isNotEmpty()) 180.dp else 120.dp)
+                    .clickable {
+                        // Buka galeri untuk memilih gambar
+                        // "image/*" berarti semua tipe file gambar (jpg, png, dll)
+                        imagePickerLauncher.launch("image/*")
+                    },
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                )
+            ) {
+                if (gambarUri.isNotEmpty()) {
+                    // Tampilkan gambar yang sudah dipilih
+                    Box {
+                        AsyncImage(
+                            model = ImageRequest.Builder(LocalContext.current)
+                                .data(Uri.parse(gambarUri))
+                                .crossfade(true)
+                                .build(),
+                            contentDescription = "Gambar barang",
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .clip(RoundedCornerShape(12.dp)),
+                            contentScale = ContentScale.Crop
+                        )
+                        // Badge "Tap untuk ganti" di atas gambar
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(8.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)
+                        ) {
+                            Text(
+                                text = "Tap untuk ganti gambar",
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(
+                                    horizontal = 12.dp,
+                                    vertical = 4.dp
+                                )
+                            )
+                        }
+                    }
+                } else {
+                    // Placeholder "Tap untuk upload gambar"
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = "🖼",
+                                fontSize = 32.sp
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "Tap untuk upload gambar",
+                                fontSize = 14.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // === FIELD: NAMA BARANG ===
+            Text(
+                text = "Nama Barang *",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            OutlinedTextField(
+                value = nama,
+                onValueChange = { nama = it },
+                placeholder = { Text("Masukkan nama barang") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // === FIELD: KATEGORI (Dropdown) ===
+            /**
+             * ExposedDropdownMenuBox membuat dropdown yang Material3-compliant.
+             *
+             * Cara kerja:
+             * 1. TextField menampilkan kategori yang dipilih
+             * 2. Klik TextField → dropdown menu terbuka (expanded = true)
+             * 3. User pilih kategori → nilai di-set dan menu ditutup
+             *
+             * readOnly = true agar user tidak bisa mengetik manual,
+             * hanya bisa memilih dari daftar yang tersedia.
+             */
+            Text(
+                text = "Kategori *",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            ExposedDropdownMenuBox(
+                expanded = expandedKategori,
+                onExpandedChange = { expandedKategori = !expandedKategori }
+            ) {
+                OutlinedTextField(
+                    value = kategori,
+                    onValueChange = {},
+                    readOnly = true,    // Hanya bisa pilih, tidak bisa ketik
+                    placeholder = { Text("Pilih kategori") },
+                    trailingIcon = {
+                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedKategori)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor(),    // Menandai ini sebagai anchor untuk menu
+                    shape = RoundedCornerShape(8.dp)
+                )
+                ExposedDropdownMenu(
+                    expanded = expandedKategori,
+                    onDismissRequest = { expandedKategori = false }
+                ) {
+                    daftarKategori.forEach { item ->
+                        DropdownMenuItem(
+                            text = { Text(item) },
+                            onClick = {
+                                kategori = item
+                                expandedKategori = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // === FIELD: HARGA & STOK (Side by side) ===
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // Harga
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Harga (Rp) *",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = harga,
+                        onValueChange = { harga = it },
+                        placeholder = { Text("0") },
+                        singleLine = true,
+                        // KeyboardType.Number = keyboard hanya angka
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+                // Stok
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Stok *",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = stok,
+                        onValueChange = { stok = it },
+                        placeholder = { Text("0") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // === FIELD: SKU & BERAT (Side by side) ===
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // SKU
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "SKU",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = sku,
+                        onValueChange = { sku = it },
+                        placeholder = { Text("Kode SKU") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+                // Berat
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Berat (kg)",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    OutlinedTextField(
+                        value = berat,
+                        onValueChange = { berat = it },
+                        placeholder = { Text("0.0") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal
+                        ),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // === FIELD: DESKRIPSI (Multi-line) ===
+            Text(
+                text = "Deskripsi",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            OutlinedTextField(
+                value = deskripsi,
+                onValueChange = { deskripsi = it },
+                placeholder = { Text("Tulis deskripsi barang...") },
+                minLines = 3,        // Minimal 3 baris tinggi
+                maxLines = 5,        // Maksimal 5 baris
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp)
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // === TOMBOL SIMPAN ===
+            Button(
+                onClick = { simpanBarang() },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text(
+                    text = if (isEditMode) "Perbarui Barang" else "Simpan Barang",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+}
+
+// === PREVIEW ===
+@Preview(showBackground = true, name = "Tambah Barang - Light")
+@Composable
+fun PreviewTambahBarangScreen() {
+    MaterialTheme {
+        TambahBarangScreen(navController = rememberNavController())
+    }
+}
+
+@Preview(showBackground = true, name = "Edit Barang - Light")
+@Composable
+fun PreviewEditBarangScreen() {
+    MaterialTheme {
+        TambahBarangScreen(
+            navController = rememberNavController(),
+            editBarangId = 1L
+        )
+    }
+}
+________________________________________
+Ringkasan Alur Aplikasi
+┌─────────────────────────────┐
+│   Screen 1: DaftarBarang    │
+│                             │
+│  ┌───────────────────────┐  │
+│  │ Card Barang 1     ►   │──────► Screen 2: DetailBarang
+│  ├───────────────────────┤  │           │
+│  │ Card Barang 2     ►   │  │      ┌────┴───┐
+│  ├───────────────────────┤  │      │  Edit  │──► Screen 3 (mode edit)
+│  │ Card Barang 3     ►   │  │      │  Hapus │──► Dialog → Hapus → Kembali
+│  └───────────────────────┘  │      └────────┘
+│                             │
+│                    [FAB +]──────► Screen 3: TambahBarang (mode tambah)
+│                             │
+│  Snackbar: notifikasi       │
+└─────────────────────────────┘
+Penjelasan Konsep Penting
+1. SharedPreferences untuk Penyimpanan Gambar
+Gambar tidak disimpan langsung di SharedPreferences (karena terlalu besar). Yang disimpan adalah URI (alamat) gambar tersebut di penyimpanan device. Seperti menyimpan alamat rumah, bukan rumahnya sendiri.
+2. takePersistableUriPermission
+Saat user memilih gambar dari galeri, Android memberikan izin sementara untuk membaca file tersebut. takePersistableUriPermission() membuat izin ini permanen, sehingga gambar tetap bisa ditampilkan setelah app di-restart.
+3. Snackbar sebagai Pengganti Bottom Bar
+Snackbar digunakan untuk menampilkan pesan singkat di bagian bawah layar, seperti “Barang berhasil ditambahkan” atau “Barang berhasil dihapus”. Lebih ringan dan tidak mengganggu UI dibandingkan Toast.
+4. Screen Tambah = Screen Edit
+TambahBarangScreen digunakan untuk dua fungsi: - Mode Tambah: editBarangId = null → form kosong - Mode Edit: editBarangId = <id> → form terisi data yang sudah ada
+Ini adalah pola umum yang menghindari duplikasi kode.
+________________________________________
+Disiapkan oleh Kukuh Yudhistiro - 2026
