@@ -25,7 +25,7 @@ Seluruh proyek dalam repositori ini dibangun menggunakan standar pengembangan An
 
 ## 📂 Struktur & Deskripsi Detail Folder Tugas
 
-Berikut adalah rincian lengkap mengenai fungsi, fitur, berkas utama, serta snapshot antarmuka dari masing-masing folder tugas:
+Berikut adalah rincian lengkap mengenai fungsi, fitur, serta berkas utama dari masing-masing folder tugas:
 
 ### 1. 🟢 `Week1_HelloWorld`
 * 📖 **Deskripsi Detail:** Aplikasi Android paling awal untuk memahami dasar arsitektur Jetpack Compose. Proyek ini membuang paradigma lama XML layout dan sepenuhnya beralih ke UI deklaratif berbasis Kotlin.
@@ -51,8 +51,6 @@ Berikut adalah rincian lengkap mengenai fungsi, fitur, berkas utama, serta snaps
   * Alur Utama: [MainActivity.kt](file:///E:/Lainnya/Tugas/Semester%206/Pemrograman%20Mobile/Project/23083000157_Muhammad_Rafli_Adyatma_PemrogramanMobile/Week2_ProfilMahasiswa/app/src/main/java/com/example/profilmahasiswa/MainActivity.kt)
   * Antarmuka Utama: [ProfileScreen.kt](file:///E:/Lainnya/Tugas/Semester%206/Pemrograman%20Mobile/Project/23083000157_Muhammad_Rafli_Adyatma_PemrogramanMobile/Week2_ProfilMahasiswa/app/src/main/java/com/example/profilmahasiswa/screens/ProfileScreen.kt)
   * Package Name: `com.example.profilmahasiswa`
-* 📸 **Snapshot Antarmuka:**
-  ![Snapshot: Profil Mahasiswa](./screenshots/student_profile_ui.jpg)
 
 ---
 
@@ -94,8 +92,6 @@ Berikut adalah rincian lengkap mengenai fungsi, fitur, berkas utama, serta snaps
   * Konfigurasi API: [WeatherApiService.kt](file:///E:/Lainnya/Tugas/Semester%206/Pemrograman%20Mobile/Project/23083000157_Muhammad_Rafli_Adyatma_PemrogramanMobile/Week6_WeatherForecast/app/src/main/java/com/example/week6_weatherforecast/data/api/WeatherApiService.kt)
   * ViewModel: [WeatherViewModel.kt](file:///E:/Lainnya/Tugas/Semester%206/Pemrograman%20Mobile/Project/23083000157_Muhammad_Rafli_Adyatma_PemrogramanMobile/Week6_WeatherForecast/app/src/main/java/com/example/week6_weatherforecast/ui/viewmodel/WeatherViewModel.kt)
   * Package Name: `com.example.week6_weatherforecast`
-* 📸 **Snapshot Antarmuka:**
-  ![Snapshot: Weather Forecast](./screenshots/weather_forecast_ui.jpg)
 
 ---
 
@@ -116,7 +112,7 @@ Berikut adalah rincian lengkap mengenai fungsi, fitur, berkas utama, serta snaps
 ---
 
 ### 7. ⚡ `Week8_SpeedTestApps`
-* 📖 **Deskripsi Detail:** Aplikasi penguji kecepatan koneksi internet (Speed Test) yang melakukan koneksi jaringan riil dengan server Cloudflare untuk mengukur performa unduh, unggah, dan latensi.
+* 📖 **Deskripsi Detail:** Aplikasi pengukur kecepatan internet (Speed Test) yang melakukan koneksi jaringan riil dengan server Cloudflare untuk mengukur performa unduh, unggah, dan latensi.
 * 🚀 **Fitur Utama:**
   * **Latensi PING:** Menguji latensi jaringan dengan melakukan ping ke `google.com` (atau fallback via HTTP HEAD).
   * **Uji Kecepatan Unduh:** Mengunduh berkas biner 10MB dari CDN Cloudflare secara asynchronous dan menghitung kecepatan transfer data dalam Mbps.
@@ -127,8 +123,6 @@ Berikut adalah rincian lengkap mengenai fungsi, fitur, berkas utama, serta snaps
   * Layar Utama: [SpeedTestScreen.kt](file:///E:/Lainnya/Tugas/Semester%206/Pemrograman%20Mobile/Project/23083000157_Muhammad_Rafli_Adyatma_PemrogramanMobile/Week8_SpeedTestApps/app/src/main/java/com/example/week9_speedtestapps/ui/screen/SpeedTestScreen.kt)
   * Logika Penguji: [SpeedTestManager.kt](file:///E:/Lainnya/Tugas/Semester%206/Pemrograman%20Mobile/Project/23083000157_Muhammad_Rafli_Adyatma_PemrogramanMobile/Week8_SpeedTestApps/app/src/main/java/com/example/week9_speedtestapps/data/SpeedTestManager.kt)
   * Package Name: `com.example.week9_speedtestapps` *(Catatan: penamaan paket menggunakan week9)*
-* 📸 **Snapshot Antarmuka:**
-  ![Snapshot: Speed Test](./screenshots/speed_test_ui.jpg)
 
 ---
 
@@ -150,15 +144,13 @@ Berikut adalah rincian lengkap mengenai fungsi, fitur, berkas utama, serta snaps
 * 📖 **Deskripsi Detail:** Aplikasi peta dan navigasi tingkat lanjut (advanced) yang merupakan versi lanjutan dari Week 9. Dilengkapi pencarian nama tempat dinamis dan pemilihan rute.
 * 🚀 **Fitur Utama:**
   * **Pencarian Autocomplete:** Mencari lokasi asal dan tujuan menggunakan prediksi nama tempat otomatis dari Google Places API secara interaktif.
-  * **Moda Transportasi:** Memilih rute berdasarkan moda transportasi: Mengemudi (Driving), Bersepeda (Bicycling), atau Berjalan Kaki (Walking).
+  * **Mode Perjalanan:** Memilih rute berdasarkan moda transportasi: Mengemudi (Driving), Bersepeda (Bicycling), atau Berjalan Kaki (Walking).
   * **Daftar Rute Alternatif:** Bottom sheet interaktif yang menyajikan rute alternatif beserta waktu tempuh dan jarak tempuh terperinci.
   * **Animasi Kamera Peta:** Kamera bergeser secara halus (smooth zoom & pan) menuju rute yang dipilih.
 * 💻 **Tech Stack & Konsep:** Google Places Autocomplete & Place Details API, Google Directions API, `ExposedDropdownMenuBox`, `ModalBottomSheet`, `FilterChip` UI, `cameraPositionState.animate()`.
 * 📦 **Struktur & Berkas Penting:**
   * Layar Utama & Logika: [MapScreen.kt](file:///E:/Lainnya/Tugas/Semester%206/Pemrograman%20Mobile/Project/23083000157_Muhammad_Rafli_Adyatma_PemrogramanMobile/Week10_MapDirection/app/src/main/java/com/rs/mymap/ui/MapScreen.kt)
   * Package Name: `com.rs.mymap` (Theme: `com.example.week10_mapdirection`)
-* 📸 **Snapshot Antarmuka:**
-  ![Snapshot: Map Directions](./screenshots/map_navigation_ui.jpg)
 
 ---
 
@@ -174,8 +166,6 @@ Berikut adalah rincian lengkap mengenai fungsi, fitur, berkas utama, serta snaps
   * Logika Catatan: [NoteViewModel.kt](file:///E:/Lainnya/Tugas/Semester%206/Pemrograman%20Mobile/Project/23083000157_Muhammad_Rafli_Adyatma_PemrogramanMobile/Week12_MyNoteApp/app/src/main/java/com/example/week12_mynoteapp/viewmodel/NoteViewModel.kt)
   * Entry Point: [MainActivity.kt](file:///E:/Lainnya/Tugas/Semester%206/Pemrograman%20Mobile/Project/23083000157_Muhammad_Rafli_Adyatma_PemrogramanMobile/Week12_MyNoteApp/app/src/main/java/com/example/week12_mynoteapp/MainActivity.kt)
   * Package Name: `com.example.week12_mynoteapp`
-* 📸 **Snapshot Antarmuka:**
-  ![Snapshot: My Note App](./screenshots/note_app_ui.jpg)
 
 ---
 
@@ -207,8 +197,6 @@ Berikut adalah rincian lengkap mengenai fungsi, fitur, berkas utama, serta snaps
 * 📦 **Struktur & Berkas Penting:**
   * Alur Utama: [MainActivity.kt](file:///E:/Lainnya/Tugas/Semester%206/Pemrograman%20Mobile/Project/23083000157_Muhammad_Rafli_Adyatma_PemrogramanMobile/UTS_RestoMasRafli/app/src/main/java/com/example/restomasrafli/MainActivity.kt)
   * Package Name: `com.example.restomasrafli`
-* 📸 **Snapshot Antarmuka:**
-  ![Snapshot: Resto Order](./screenshots/resto_order_ui.jpg)
 
 ---
 
